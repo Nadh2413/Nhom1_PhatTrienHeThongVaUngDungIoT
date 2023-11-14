@@ -1,0 +1,283 @@
+#include <LiquidCrystal_I2C.h> // Khai báo thư viện LCD I2C
+#include <SoftwareSerial.h> 
+#include <SerialCommand.h>
+LiquidCrystal_I2C lcd(0x27, 16, 2); // Khởi tạo đối tượng lcd với địa chỉ I2C của màn hình
+int sensorPin = A1; // Chân đọc giá trị độ ẩm đất
+int lm35Pin = A0; // Chân đọc giá trị nhiệt độ không khí
+
+const int led1Pin = 8; // Chân điều khiển đèn LED 1
+const int led2Pin = 9; // Chân điều khiển đèn LED 2
+const int motorPin = 12; // Chân điều khiển motor
+const int led3Pin = 10;
+const int Den220 = 13;// chân điều khiển đèn 220v
+const int LED220 = 11;
+#define Rx 2
+#define Tx 3
+SoftwareSerial mySerial = SoftwareSerial(Rx,Tx);
+String inputString = "";      // a String to hold incoming data
+bool stringComplete = false;  // whether the string is complete
+String sendensp = "";
+String data1 = "";
+String data2 = "";
+String data = "";
+long last = 0;
+int bienA,bienB;
+
+void setup() {
+  Serial.begin(9600);
+  inputString.reserve(200);
+  mySerial.begin(9600);
+
+  lcd.init();
+  lcd.backlight();
+  pinMode(led1Pin, OUTPUT);
+  pinMode(Den220, OUTPUT);
+  pinMode(led3Pin, OUTPUT);
+  pinMode(led2Pin, OUTPUT);
+  pinMode(motorPin, OUTPUT);
+  pinMode(LED220, OUTPUT);
+  
+  last = millis();
+  Serial.print("GUI LAN DAU: ");
+  Serial.println("C1");
+  mySerial.println("C1");
+}
+
+void loop() {
+  if(millis() - last >= 500){ //Hàm delay
+    serialEvent();
+    last = millis();
+  }
+}
+
+void sendDATA(){
+  if(bienA == 1)
+  {
+    data = data + "A1" + "D";
+  }
+  else if(bienA == 0){
+    data = data + "A0" + "D";
+  }
+  if(bienB == 1)
+  {
+    data = data + "B1" + "D";
+  }
+  else if(bienB == 0){
+    data = data + "B0" + "D";
+  }
+  mySerial.println(data);
+}
+
+//Hàm nhận dữ liệu từ ensp8266
+void serialEvent() {
+    while (mySerial.available()) {
+    char inChar = (char)mySerial.read();
+    inputString += inChar;
+    if (inChar == '\n') {
+      stringComplete = true;
+      }
+    }
+    if (stringComplete) {
+    Serial.print("DATA NHẬN ĐƯỢC: ");
+    Serial.println(inputString);
+    // clear the string:
+    xulyONOFF(String(inputString));
+    //
+    inputString = "";
+    stringComplete = false;
+  }
+}
+
+void controlLights() //Hàm xét điều kiện mặc định
+{
+      float temperature = (5.0*analogRead(A0)*100.0/1024.0);
+      int lm35Value = analogRead(A0);
+      if (temperature < 30 ) 
+      {
+          digitalWrite(Den220, HIGH);
+          digitalWrite(LED220, HIGH);
+          bienA = 1;
+          lcd.setCursor(0, 1);
+          lcd.print("Do C thap bat den");
+          delay(1000);
+      }
+      if (temperature > 30) 
+      {
+          digitalWrite(Den220, LOW);
+          digitalWrite(LED220, LOW);
+          bienA = 0;
+          lcd.setCursor(0, 1);
+          lcd.print("Do C cao tat den");
+          delay(1000);
+      }
+}
+
+void tudong() // Hàm chạy trạng thái tự động
+{
+        Serial.println("TÍNH TOÁN AUTO");
+        int sensorValue = analogRead(sensorPin); // Đọc giá trị độ ẩm đất
+        int lm35Value = analogRead(A0); // Đọc giá trị nhiệt độ không khí
+        // Tính toán giá trị độ ẩm đất dưới dạng phần trăm
+        int percentValue = map(sensorValue, 0, 1023, 100, 0);
+        Serial.print("Do Am Dat: ");
+        Serial.print(percentValue);
+        data1 = String(percentValue);
+        Serial.print("%\n");
+        // Hiển thị giá trị nhiệt độ không khí
+        float temperature = (5.0*analogRead(A0)*100.0/1024.0);
+        Serial.print("Nhiệt độ không khí: ");
+        Serial.print(temperature);
+        data2 = String(temperature,2);
+        Serial.println(" độ C ");
+        data = "E" + data1 + "F" + data2 + "G";
+        mySerial.println(data);
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print("Do Am Dat: ");
+        lcd.print(percentValue);
+        lcd.print("%");
+        lcd.setCursor(0, 1);
+    // Chia ra 3 trường hợp
+    if (percentValue < 50) 
+    {
+          digitalWrite(led1Pin, HIGH);
+          digitalWrite(led2Pin, LOW);
+          digitalWrite(motorPin, HIGH);
+          bienB = 1;
+          
+          Serial.print("Dat Thieu Do Am \n ");
+          
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          lcd.print(" Do Am: ");
+          lcd.print(percentValue);
+          lcd.print("%");
+          lcd.setCursor(0, 1);
+          lcd.print(" Bat Motor");
+          delay(1000);
+          lcd.setCursor(0, 1);
+          lcd.print("Nhiet Do KK: ");
+          lcd.print(temperature);
+          lcd.print(" C");
+          delay(1000);
+          controlLights();
+    } 
+    else if (percentValue >= 50 && percentValue < 59) 
+    { 
+          digitalWrite(led1Pin, LOW);
+          digitalWrite(led2Pin, HIGH);
+          digitalWrite(led3Pin,LOW) ;
+          digitalWrite(motorPin, LOW);
+          bienB = 0;
+          Serial.print("Do Am Du \n ");
+
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          lcd.print("Do Am:");
+          lcd.print(percentValue);
+          lcd.print("%");
+          delay(3000);  
+
+          lcd.setCursor(0, 0);
+          lcd.print("Nhiet Do KK: ");
+          lcd.print(temperature);
+          lcd.print(" do C");
+          delay(3000);
+
+          lcd.setCursor(0, 1);
+          lcd.print(" Tat Motor");
+          delay(3000);
+          controlLights();
+    }
+    else if (percentValue > 60)
+    { // Đất dư độ ẩm
+          digitalWrite(led2Pin, LOW);
+          digitalWrite(led3Pin, HIGH);
+          digitalWrite(motorPin, LOW);
+          bienB = 0;
+          Serial.print("Dat Du Do Am ");
+
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          lcd.print("Do Am :");
+          lcd.print(percentValue);
+          lcd.print("%");
+        
+          lcd.setCursor(0, 1);
+          lcd.print(" Tat Motor ");
+          delay(1000);
+          lcd.setCursor(0, 1);
+          lcd.print("Nhiet Do KK: ");
+          lcd.print(temperature);
+          lcd.print(" do C");
+          controlLights();
+    }
+}
+
+// Hàm xử lý dữ liệu nhận từ ensp8266
+void xulyONOFF(String inputString){
+  if((inputString.indexOf("C1")>=0))
+      {
+        Serial.println("BẬT CHẾ ĐỘ AUTO");
+        tudong();
+        sendDATA();
+        Serial.print("CHUỖI TỔNG:");
+        Serial.println(data); 
+      }
+      else if(inputString.indexOf("C0")>=0)
+      {
+        digitalWrite(led1Pin, LOW);
+        digitalWrite(led2Pin, LOW);
+        digitalWrite(led3Pin, LOW);
+        digitalWrite(LED220, LOW);
+        DATA(); 
+        Serial.println("CHẾ ĐỘ THỦ CÔNG");
+        if(inputString.indexOf("A1")>=0)
+        {
+          Serial.println("ON DEN 220V");
+          digitalWrite(Den220, HIGH);
+        }
+        if(inputString.indexOf("A0")>=0)
+        {
+          Serial.println("OFF DEN 220V");
+          digitalWrite(Den220, LOW);
+        }
+        if(inputString.indexOf("B1")>=0)
+        {
+          Serial.println("ON MÁY BƠM");
+          digitalWrite(motorPin, HIGH);
+        }
+        if(inputString.indexOf("B0")>=0)
+        {
+          Serial.println("OFF MÁY BƠM");
+          digitalWrite(motorPin, LOW);
+        }
+      }
+}
+
+void DATA() //Hàm gửi dữ liệu nhiệt độ, độ ẩm
+{
+  Serial.println("TÍNH TOÁN MẶC ĐỊNH");
+  int sensorValue = analogRead(sensorPin); // Đọc giá trị độ ẩm đất
+  int lm35Value = analogRead(A0); // Đọc giá trị nhiệt độ không khí
+  // Tính toán giá trị độ ẩm đất dưới dạng phần trăm
+  int percentValue = map(sensorValue, 0, 1023, 100, 0);
+  Serial.print("Do Am Dat: ");
+  Serial.print(percentValue);
+  data1 = String(percentValue);
+  Serial.print("%\n");
+  // Hiển thị giá trị nhiệt độ không khí
+  float temperature = (5.0*analogRead(A0)*100.0/1024.0);
+  Serial.print("Nhiệt độ không khí: ");
+  Serial.print(temperature);
+  data2 = String(temperature,2);
+  Serial.println(" độ C ");
+  if(percentValue < 10){
+    data = "E" + data1 + "I" + "F" + data2 + "G";
+  }else{
+    data = "E" + data1 + "F" + data2 + "G";
+  }
+  mySerial.println(data);
+  Serial.print("CHUỖI TỔNG:");
+  Serial.println(data); 
+}
